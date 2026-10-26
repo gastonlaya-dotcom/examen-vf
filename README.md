@@ -4,6 +4,7 @@ App web estilo Mentimeter para tomar exámenes de **50 preguntas Verdadero/Falso
 
 - **Alumno** (`index.html`): se registra con nombre, apellido, curso y DNI o registro → responde de a una pregunta (V, F o sin responder) → **Verificar resultados** (correctas, incorrectas, sin responder, puntaje) → **Corregir respuestas** (hasta 3 veces, navegando libremente por las 50 sin saber cuáles están bien) o **Enviar resultados**.
 - **Puntaje**: correcta +1 · incorrecta −1 · sin responder 0.
+- **Tiempo por pregunta** (configurable, por defecto 60 segundos): en la primera pasada, si se termina el tiempo sin respuesta, la pregunta queda en blanco y pasa sola a la siguiente. Con el timer activo no se puede volver atrás en esa pasada; el reloj sigue corriendo aunque se recargue la página. Las correcciones no tienen tiempo. 0 = sin límite.
 - **Docente** (`admin.html`): carga las preguntas desde Excel, muestra el QR, abre o cierra el ingreso, y consulta el repositorio de exámenes con todas las preguntas, la opción elegida por cada alumno y el puntaje final. Exporta todo a Excel.
 
 ## Cómo está armada

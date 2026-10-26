@@ -23,7 +23,8 @@ var CONFIG_DEFAULTS = [
   ['abierto', 'SI', 'SI = se aceptan nuevos registros · NO = examen cerrado'],
   ['max_correcciones', '3', 'Cantidad máxima de correcciones por alumno'],
   ['mezclar', 'NO', 'SI = cada alumno recibe las preguntas en orden aleatorio'],
-  ['cursos', '', 'Lista de cursos separados por coma (vacío = texto libre)']
+  ['cursos', '', 'Lista de cursos separados por coma (vacío = texto libre)'],
+  ['segundos_por_pregunta', '60', 'Tiempo para responder cada pregunta en la primera pasada (0 = sin límite)']
 ];
 var SEED = [["Un sistema de información incluye personas, procedimientos, datos y tecnología, no solo computadoras.", "V"], ["Dato e información son sinónimos en la gestión empresarial.", "F"], ["La información tiene valor cuando es oportuna, precisa y relevante para quien decide.", "V"], ["Un ERP integra en una única base de datos los procesos de distintas áreas de la empresa.", "V"], ["Un ERP se implementa siempre sin necesidad de revisar los procesos de negocio de la empresa.", "F"], ["La memoria RAM conserva su contenido cuando se apaga el equipo.", "F"], ["Un disco SSD no tiene partes mecánicas móviles.", "V"], ["La computación en la nube permite pagar por uso en lugar de invertir en infraestructura propia.", "V"], ["En el modelo SaaS, el cliente es responsable de administrar los servidores donde corre la aplicación.", "F"], ["IaaS provee infraestructura (servidores, almacenamiento, red) como servicio.", "V"], ["El sistema operativo es un software de aplicación.", "F"], ["El software de código abierto nunca tiene costos asociados de implementación ni de soporte.", "F"], ["Un algoritmo es una secuencia finita de pasos para resolver un problema.", "V"], ["RFID permite identificar objetos sin línea de visión directa, a diferencia del código de barras.", "V"], ["La mayor parte del tráfico internacional de Internet viaja por satélites.", "F"], ["TCP/IP es el conjunto de protocolos sobre el que funciona Internet.", "V"], ["Una red LAN cubre áreas geográficas extensas, como países o continentes.", "F"], ["La Business Intelligence transforma datos en información para la toma de decisiones.", "V"], ["Un data warehouse está optimizado principalmente para registrar transacciones operativas en tiempo real.", "F"], ["La minería de datos busca patrones y relaciones no evidentes en grandes volúmenes de datos.", "V"], ["Un tablero de control debería mostrar todos los indicadores disponibles, sin priorizar.", "F"], ["La inteligencia artificial generativa puede producir respuestas incorrectas con apariencia convincente.", "V"], ["COBIT es un marco de referencia para el gobierno y la gestión de las TI.", "V"], ["La gobernanza de IT es responsabilidad exclusiva del área de sistemas.", "F"], ["Alinear la estrategia de IT con la estrategia del negocio es un objetivo central de la gobernanza de IT.", "V"], ["El CHAOS Report del Standish Group analiza el éxito y el fracaso de proyectos de software.", "V"], ["Según el CHAOS Report, la mayoría de los proyectos de software terminan en el tiempo, costo y alcance previstos.", "F"], ["Las metodologías ágiles entregan el producto en incrementos cortos e iterativos.", "V"], ["En una metodología en cascada, cada etapa comienza cuando finaliza la anterior.", "V"], ["Scrum es una metodología en cascada.", "F"], ["El involucramiento de los usuarios es un factor clave de éxito en los proyectos de sistemas.", "V"], ["Desarrollar software a medida suele ser más rápido y barato que adquirir un paquete estándar.", "F"], ["Al tercerizar un servicio de IT, la empresa deja de necesitar controlar al proveedor.", "F"], ["Un acuerdo de nivel de servicio (SLA) define parámetros medibles de calidad que el proveedor se compromete a cumplir.", "V"], ["El costo total de propiedad (TCO) considera solo el precio de compra del equipamiento.", "F"], ["En una contratación de tecnología conviene definir los criterios de evaluación antes de recibir las propuestas.", "V"], ["Confidencialidad, integridad y disponibilidad son los pilares de la seguridad de la información.", "V"], ["Un firewall alcanza por sí solo para proteger a una organización de todos los ataques informáticos.", "F"], ["El phishing busca engañar a las personas para que entreguen credenciales o información sensible.", "V"], ["El ransomware cifra los datos de la víctima y exige un pago para liberarlos.", "V"], ["Tener backups probados periódicamente es una medida clave frente a un ataque de ransomware.", "V"], ["La autenticación de dos factores combina, por ejemplo, algo que sabés con algo que tenés.", "V"], ["Un plan de continuidad del negocio solo es necesario en empresas de más de mil empleados.", "F"], ["El e-business abarca únicamente la venta de productos por Internet.", "F"], ["El modelo B2B se refiere a transacciones entre empresas.", "V"], ["Las plataformas digitales pueden convertir en commodity a las empresas que dependen de ellas para llegar a sus clientes.", "V"], ["La Industria 4.0 se caracteriza por integrar sistemas físicos y digitales, como sensores conectados e IoT.", "V"], ["Internet de las Cosas (IoT) se refiere exclusivamente a la conexión de computadoras personales a Internet.", "F"], ["El diagrama de un circuito administrativo permite detectar controles internos y puntos de mejora del proceso.", "V"], ["Digitalizar un proceso ineficiente lo vuelve eficiente automáticamente.", "F"]];
 
@@ -93,6 +94,8 @@ function config_() {
   CONFIG_DEFAULTS.forEach(function (r) { cfg[r[0]] = r[1]; });
   sh.getDataRange().getValues().slice(1).forEach(function (r) { if (r[0]) cfg[String(r[0]).trim()] = str_(r[1]).trim(); });
   cfg.max_correcciones = Math.max(0, parseInt(cfg.max_correcciones, 10) || 0);
+  var sp = parseInt(cfg.segundos_por_pregunta, 10);
+  cfg.segundos_por_pregunta = isNaN(sp) ? 60 : Math.max(0, Math.min(600, sp));
   cfg.abierto = String(cfg.abierto).toUpperCase() === 'SI' ? 'SI' : 'NO';
   cfg.mezclar = String(cfg.mezclar).toUpperCase() === 'SI' ? 'SI' : 'NO';
   c.put('cfg', JSON.stringify(cfg), 60);
@@ -205,6 +208,7 @@ function studentPayload_(x, cfg, qs) {
     respuestas: x.respuestas || {},
     verificaciones: x.verificaciones,
     maxCorrecciones: cfg.max_correcciones,
+    segundosPorPregunta: cfg.segundos_por_pregunta,
     estado: x.estado
   };
   if (x.estado === 'enviado') {
@@ -231,7 +235,7 @@ ACTIONS.info = function () {
   var cfg = config_();
   return {
     titulo: cfg.titulo, abierto: cfg.abierto === 'SI', totalPreguntas: questions_().length,
-    maxCorrecciones: cfg.max_correcciones,
+    maxCorrecciones: cfg.max_correcciones, segundosPorPregunta: cfg.segundos_por_pregunta,
     cursos: cfg.cursos ? cfg.cursos.split(',').map(function (s) { return s.trim(); }).filter(String) : []
   };
 };
@@ -324,7 +328,7 @@ function admin_(req) {
 }
 
 function publicCfg_(cfg) {
-  return { titulo: cfg.titulo, abierto: cfg.abierto, max_correcciones: cfg.max_correcciones, mezclar: cfg.mezclar, cursos: cfg.cursos };
+  return { titulo: cfg.titulo, abierto: cfg.abierto, max_correcciones: cfg.max_correcciones, mezclar: cfg.mezclar, cursos: cfg.cursos, segundos_por_pregunta: cfg.segundos_por_pregunta };
 }
 
 function examSummary_(x, total) {
@@ -376,6 +380,7 @@ ACTIONS.adminSetConfig = function (req) {
   if (c.max_correcciones != null) setConfigValue_('max_correcciones', String(Math.max(0, Math.min(20, parseInt(c.max_correcciones, 10) || 0))));
   if (c.mezclar != null) setConfigValue_('mezclar', c.mezclar === true || String(c.mezclar).toUpperCase() === 'SI' ? 'SI' : 'NO');
   if (c.cursos != null) setConfigValue_('cursos', String(c.cursos));
+  if (c.segundos_por_pregunta != null) setConfigValue_('segundos_por_pregunta', String(Math.max(0, Math.min(600, parseInt(c.segundos_por_pregunta, 10) || 0))));
   if (c.nueva_password) {
     if (String(c.nueva_password).length < 6) throw fail_('La contraseña nueva debe tener al menos 6 caracteres.');
     setConfigValue_('admin_password', String(c.nueva_password));

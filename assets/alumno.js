@@ -24,6 +24,7 @@
     }); return JSON.stringify(o);
   }
   function onlyVF(map) { var o = {}; for (var k in map) if (map[k] === 'V' || map[k] === 'F') o[k] = map[k]; return o; }
+  function secs() { return S && S.segundosPorPregunta != null ? S.segundosPorPregunta : (info ? info.segundosPorPregunta : 60) || 0; }
   function remaining() { return Math.max(0, S.maxCorrecciones - Math.max(0, S.verificaciones - 1)); }
 
   function setWho() {
@@ -85,6 +86,7 @@
         '<p class="eyebrow">Examen · ' + n + ' preguntas</p>' +
         '<h1>' + esc(t) + '</h1>' +
         '<p class="lead">Respondé cada afirmación con Verdadero o Falso. Podés dejar preguntas sin responder. ' +
+        (info && info.segundosPorPregunta ? 'Tenés ' + tiempoTxt(info.segundosPorPregunta) + ' por pregunta: si no respondés a tiempo, queda en blanco y pasa a la siguiente. ' : '') +
         'Al final verificás tu puntaje y tenés hasta ' + maxC + ' oportunidades para corregir antes de enviar.</p>' +
         '<div class="rules"><div><b>+1</b><span>Correcta</span></div><div><b>−1</b><span>Incorrecta</span></div><div><b>0</b><span>Sin responder</span></div></div>' +
       '</section>' +
@@ -131,6 +133,7 @@
     S = {
       examId: r.examId, token: r.token, titulo: r.titulo, alumno: r.alumno, preguntas: r.preguntas,
       verificaciones: r.verificaciones, maxCorrecciones: r.maxCorrecciones,
+      segundosPorPregunta: r.segundosPorPregunta == null ? 60 : r.segundosPorPregunta, deadline: null, deadlineIdx: null,
       respuestas: Object.assign({}, r.respuestas), snapshot: Object.assign({}, r.respuestas),
       resultado: r.resultado || null, enviado: r.enviado || '', idx: 0, stage: 'respondiendo'
     };
@@ -138,7 +141,7 @@
     else if (r.verificaciones > 0) S.stage = 'resultados';
     if (prev && S.stage !== 'enviado') {   // conservar avance local no verificado
       S.respuestas = Object.assign({}, prev.respuestas);
-      S.idx = prev.idx || 0;
+      S.idx = prev.idx || 0; S.deadline = prev.deadline || null; S.deadlineIdx = prev.deadlineIdx;
       if (r.verificaciones === 0 && (prev.stage === 'respondiendo' || prev.stage === 'fin')) S.stage = prev.stage;
       if (r.verificaciones > 0 && prev.stage === 'corrigiendo') S.stage = 'corrigiendo';
       if (r.verificaciones > 0 && prev.stage !== 'corrigiendo') S.respuestas = Object.assign({}, r.respuestas);
@@ -177,12 +180,21 @@
 
     var head, foot;
     if (!correcting) {
-      head = '<div class="q-meta"><span>Pregunta <b>' + (S.idx + 1) + '</b> de ' + N + '</span><span>Respondidas: <b>' + done + '</b></span></div>' +
-        '<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="' + N + '" aria-valuenow="' + (S.idx + 1) + '"><i style="width:' + ((S.idx + 1) / N * 100) + '%"></i></div>';
-      foot = '<div class="nav">' +
-        '<button class="btn ghost" id="prev" ' + (S.idx === 0 ? 'disabled' : '') + '>Anterior</button>' +
+      var T = secs();
+      if (T && (S.deadlineIdx !== S.idx || !S.deadline)) { S.deadline = Date.now() + T * 1000; S.deadlineIdx = S.idx; save(); }
+      var leftS = T ? Math.max(0, Math.ceil((S.deadline - Date.now()) / 1000)) : 0;
+      head = (S.timeoutMsg ? '<p class="note" id="tmsg">' + esc(S.timeoutMsg) + '</p>' : '') +
+        '<div class="q-meta"><span>Pregunta <b>' + (S.idx + 1) + '</b> de ' + N + '</span>' +
+        (T ? '<span class="timer" id="timer" role="timer" aria-label="Tiempo restante">⏱ <b id="tsec">' + clock(leftS) + '</b></span>' : '') +
+        '<span>Respondidas: <b>' + done + '</b></span></div>' +
+        (T ? '<div class="bar tbar" id="tbarw"><i id="tbar" style="width:' + (leftS / T * 100) + '%"></i></div>'
+           : '<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="' + N + '" aria-valuenow="' + (S.idx + 1) + '"><i style="width:' + ((S.idx + 1) / N * 100) + '%"></i></div>');
+      foot = '<div class="nav' + (T ? ' solo' : '') + '">' +
+        (T ? '' : '<button class="btn ghost" id="prev" ' + (S.idx === 0 ? 'disabled' : '') + '>Anterior</button>') +
         '<button class="btn primary" id="next" ' + (chosen ? '' : 'disabled') + '>' + (last ? 'Terminar' : 'Siguiente') + '</button>' +
-        '</div>' + (chosen ? '' : '<p class="small muted" style="text-align:center">Elegí una opción (o dejala sin responder) para pasar a la siguiente.</p>');
+        '</div>' + (chosen ? '' : '<p class="small muted" style="text-align:center">Elegí una opción (o dejala sin responder) para pasar a la siguiente.' +
+        (T ? ' Si se termina el tiempo, queda sin responder.' : '') + '</p>');
+      if (T) setTimeout(tick, 0);
     } else {
       var used = Math.max(0, S.verificaciones - 1);
       var changed = norm(S.respuestas) !== norm(S.snapshot);
@@ -230,7 +242,7 @@
     var $prev = document.getElementById('prev'), $next = document.getElementById('next');
     if ($prev) $prev.onclick = function () { S.idx--; save(); render(); };
     if ($next) $next.onclick = function () {
-      if (!correcting && last) { S.stage = 'fin'; save(); render(); window.scrollTo(0, 0); return; }
+      if (!correcting) { S.timeoutMsg = ''; return advance(); }
       S.idx++; save(); render();
     };
     var $v = document.getElementById('verify'); if ($v) $v.onclick = function () { verify($v); };
@@ -239,6 +251,38 @@
       S.respuestas = Object.assign({}, S.snapshot); S.stage = 'resultados'; save(); render(); window.scrollTo(0, 0);
     };
   }
+
+  // Primera pasada: avanzar a la siguiente pregunta (o al final) y reiniciar el reloj.
+  function advance() {
+    S.deadline = null; S.deadlineIdx = null;
+    if (S.idx >= total() - 1) { S.stage = 'fin'; save(); render(); window.scrollTo(0, 0); return; }
+    S.idx++; save(); render(); window.scrollTo(0, 0);
+  }
+
+  // Se acabó el tiempo: si no eligió V o F, queda en blanco y pasa sola.
+  function timeUp() {
+    var q = S.preguntas[S.idx];
+    var a = S.respuestas[q.n];
+    if (a !== 'V' && a !== 'F') { S.respuestas[q.n] = ''; S.timeoutMsg = 'Se terminó el tiempo de la pregunta ' + (S.idx + 1) + ': quedó sin responder.'; }
+    else S.timeoutMsg = '';
+    advance();
+  }
+
+  function clock(sec) { var m = Math.floor(sec / 60), r = sec % 60; return m + ':' + (r < 10 ? '0' : '') + r; }
+  function tiempoTxt(sec) { return sec % 60 === 0 ? (sec / 60 === 1 ? '1 minuto' : sec / 60 + ' minutos') : sec + ' segundos'; }
+
+  function tick() {
+    if (!S || S.stage !== 'respondiendo' || !secs() || !S.deadline || S.deadlineIdx !== S.idx) return;
+    var ms = S.deadline - Date.now();
+    if (ms <= 0) { timeUp(); return; }
+    var sec = Math.ceil(ms / 1000);
+    var $s = document.getElementById('tsec'), $b = document.getElementById('tbar'), $t = document.getElementById('timer');
+    if ($s) $s.textContent = clock(sec);
+    if ($b) $b.style.width = (ms / (secs() * 1000) * 100) + '%';
+    if ($t) $t.classList.toggle('low', sec <= 10);
+    var $w = document.getElementById('tbarw'); if ($w) $w.classList.toggle('low', sec <= 10);
+  }
+  setInterval(tick, 250);
 
   function choose(v) {
     var q = S.preguntas[S.idx];
@@ -266,11 +310,11 @@
         'Cuando verifiques vas a ver cuántas tenés bien, mal y sin responder, y tu puntaje.</p>' +
         '<p id="err" class="err" hidden></p>' +
         '<div class="actions">' +
-          '<button class="btn ghost" id="review">Revisar antes de verificar</button>' +
+          (secs() ? '' : '<button class="btn ghost" id="review">Revisar antes de verificar</button>') +
           '<button class="btn primary" id="verify">Verificar resultados</button>' +
         '</div>' +
       '</section>';
-    document.getElementById('review').onclick = function () { S.stage = 'respondiendo'; S.idx = 0; save(); render(); };
+    var $rv = document.getElementById('review'); if ($rv) $rv.onclick = function () { S.stage = 'respondiendo'; S.idx = 0; save(); render(); };
     var $v = document.getElementById('verify'); $v.onclick = function () { verify($v); };
   }
 

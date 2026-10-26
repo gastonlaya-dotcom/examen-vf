@@ -478,6 +478,8 @@
             '<div class="field"><label for="maxc">Correcciones permitidas</label><input id="maxc" type="number" min="0" max="20" value="' + cfg.max_correcciones + '"></div>' +
             '<div class="field"><label for="mez">Orden de las preguntas</label><select id="mez"><option value="NO">Igual para todos</option><option value="SI">Aleatorio por alumno</option></select></div>' +
           '</div>' +
+          '<div class="field"><label for="segs">Tiempo por pregunta (segundos)</label><input id="segs" type="number" min="0" max="600" step="5" value="' + (cfg.segundos_por_pregunta == null ? 60 : cfg.segundos_por_pregunta) + '">' +
+            '<span class="hint">Rige en la primera pasada: si se acaba el tiempo, la pregunta queda sin responder y pasa a la siguiente. 0 = sin límite. Las correcciones no tienen tiempo.</span></div>' +
           '<div class="field"><label for="npw">Nueva contraseña del panel</label><input id="npw" type="password" autocomplete="new-password" placeholder="Dejalo vacío para no cambiarla"></div>' +
           '<p id="cmsg" hidden></p>' +
           '<button class="btn primary" id="save">Guardar cambios</button>' +
@@ -493,6 +495,7 @@
         var r = await call('adminSetConfig', { config: {
           titulo: document.getElementById('titulo').value, cursos: document.getElementById('cursos').value,
           max_correcciones: document.getElementById('maxc').value, mezclar: document.getElementById('mez').value,
+          segundos_por_pregunta: document.getElementById('segs').value,
           nueva_password: npw || undefined } });
         cfg = r.config;
         if (npw) { pw = npw; ssSet(PW_KEY, pw); }

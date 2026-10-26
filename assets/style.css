@@ -144,6 +144,12 @@ main { padding-block: 20px 40px; display: grid; gap: 16px; }
 }
 .skip[aria-pressed="true"] { border-style: solid; border-color: var(--ink); color: var(--ink); background: var(--sheet); font-weight: 700; }
 .nav { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+.nav.solo { grid-template-columns: 1fr; }
+.timer { font-family: var(--f-mono); color: var(--ink); white-space: nowrap; }
+.timer b { font-size: 1.05rem; }
+.timer.low, .timer.low b { color: var(--bad); }
+.tbar i { transition: width .25s linear; }
+.tbar.low i { background: var(--bad); }
 
 /* Resultados */
 .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
