@@ -100,7 +100,10 @@ function clearCache_() { CacheService.getScriptCache().removeAll(['cfg', 'preg']
 function config_() {
   var c = CacheService.getScriptCache(), hit = c.get('cfg');
   if (hit) return JSON.parse(hit);
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH.CONFIG);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw fail_('El script no está vinculado a una Google Sheet. Crealo desde la planilla: Extensiones → Apps Script.', 'setup');
+  var sh = ss.getSheetByName(SH.CONFIG);
+  if (!sh || !ss.getSheetByName(SH.ACT)) { setup(); sh = ss.getSheetByName(SH.CONFIG); }  // crea las hojas si faltan
   if (!sh) throw fail_('Falta ejecutar setup() en la planilla.', 'setup');
   var cfg = {};
   CONFIG_DEFAULTS.forEach(function (r) { cfg[r[0]] = r[1]; });
