@@ -14,7 +14,7 @@
 
   function load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } }
-  function reset() { S = null; try { localStorage.removeItem(KEY); } catch (e) { } }
+  function reset() { S = null; try { localStorage.removeItem(KEY); localStorage.removeItem('vf_eventos_v1'); localStorage.removeItem('vf_hidden_at'); } catch (e) { } Q = []; }
 
   function total() { return S ? S.preguntas.length : (info ? info.totalPreguntas : 50); }
   function answered(map) { var c = 0; for (var k in map) if (map[k] === 'V' || map[k] === 'F') c++; return c; }
@@ -31,6 +31,67 @@
     $who.textContent = S && S.alumno ? (S.alumno.apellido + ', ' + S.alumno.nombre + ' · ' + S.alumno.curso) : '';
   }
 
+  // ───────── Registro de actividad ─────────
+  // Cada acción se encola (y se guarda en el dispositivo) y se envía en lotes al servidor.
+  var QKEY = 'vf_eventos_v1';
+  var Q = (function () { try { return JSON.parse(localStorage.getItem(QKEY)) || []; } catch (e) { return []; } })();
+  var flushing = false, hiddenAt = null, blurAt = null;
+  function qsave() { try { localStorage.setItem(QKEY, JSON.stringify(Q.slice(-500))); } catch (e) { } }
+  function logEv(e, n, d, sec) {
+    if (!S || !S.examId || S.stage === 'enviado') return;
+    Q.push({ t: Date.now(), e: e, n: n || '', d: d == null ? '' : String(d), s: sec || 0 });
+    qsave();
+  }
+  function takeEvents() { var out = Q.splice(0, 300); qsave(); return out; }
+  function putBack(evs) { Q = evs.concat(Q); qsave(); }
+  async function flush() {
+    if (flushing || !Q.length || !S || !S.examId || S.stage === 'enviado' || busy) return;
+    flushing = true;
+    var evs = takeEvents();
+    try { await VF.call('log', { examId: S.examId, token: S.token, eventos: evs }, { retries: 1 }); }
+    catch (e) { putBack(evs); }
+    finally { flushing = false; }
+  }
+  function beacon() {
+    if (!Q.length || !S || !S.examId || !navigator.sendBeacon || !VF.getUrl()) return;
+    var evs = Q.slice(0, 300);
+    try {
+      if (navigator.sendBeacon(VF.getUrl(), JSON.stringify({ action: 'log', examId: S.examId, token: S.token, eventos: evs }))) { Q.splice(0, evs.length); qsave(); }
+    } catch (e) { }
+  }
+  setInterval(flush, 20000);
+
+  function active() { return S && S.examId && S.stage !== 'enviado'; }
+  document.addEventListener('visibilitychange', function () {
+    if (!active()) return;
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = Date.now();
+      try { localStorage.setItem('vf_hidden_at', String(hiddenAt)); } catch (e) { }
+      logEv('salida', curN(), 'Pantalla del examen oculta (cambió de app, de pestaña o bloqueó el celular)');
+      beacon();
+    } else if (hiddenAt) {
+      cameBack(hiddenAt);
+    }
+  });
+  window.addEventListener('pagehide', function () { if (active()) beacon(); });
+  window.addEventListener('blur', function () { if (active() && document.visibilityState === 'visible') blurAt = Date.now(); });
+  window.addEventListener('focus', function () {
+    if (!blurAt || !active()) { blurAt = null; return; }
+    var sec = Math.round((Date.now() - blurAt) / 1000); blurAt = null;
+    if (sec >= 2 && document.visibilityState === 'visible') logEv('foco', curN(), 'La pantalla perdió el foco (notificaciones, ventana flotante u otra parte de la página)', sec);
+  });
+  function cameBack(since) {
+    var sec = Math.max(0, Math.round((Date.now() - since) / 1000));
+    hiddenAt = null;
+    try { localStorage.removeItem('vf_hidden_at'); } catch (e) { }
+    S.salidas = (S.salidas || 0) + 1;
+    logEv('regreso', curN(), 'Estuvo fuera del examen', sec);
+    S.awayMsg = 'Saliste del examen durante ' + dur(sec) + '. Quedó registrado (salida ' + S.salidas + ').';
+    save(); render(); flush();
+  }
+  function curN() { return S && S.preguntas && (S.stage === 'respondiendo' || S.stage === 'corrigiendo') ? S.preguntas[S.idx].n : ''; }
+  function dur(sec) { return sec < 60 ? sec + ' s' : Math.floor(sec / 60) + ' min ' + (sec % 60) + ' s'; }
+
   function btnBusy(btn, label) {
     if (!btn) return;
     btn.disabled = true;
@@ -44,7 +105,14 @@
         '<p class="lead">Escaneá el código QR que muestra tu docente para entrar al examen.</p></section>';
       return;
     }
-    if (S && S.examId) { render(); }
+    if (S && S.examId) {
+      if (S.stage !== 'enviado') {
+        var ha = null; try { ha = +localStorage.getItem('vf_hidden_at') || null; } catch (e) { }
+        logEv('reingreso', curN(), 'Volvió a abrir el examen o recargó la página');
+        if (ha) cameBack(ha);
+      }
+      render(); flush();
+    }
     try {
       info = await VF.call('info', {});
       document.title = info.titulo;
@@ -88,6 +156,7 @@
         '<p class="lead">Respondé cada afirmación con Verdadero o Falso. Podés dejar preguntas sin responder. ' +
         (info && info.segundosPorPregunta ? 'Tenés ' + tiempoTxt(info.segundosPorPregunta) + ' por pregunta: si no respondés a tiempo, queda en blanco y pasa a la siguiente. ' : '') +
         'Al final verificás tu puntaje y tenés hasta ' + maxC + ' oportunidades para corregir antes de enviar.</p>' +
+        '<p class="small muted">Durante el examen se registra cada respuesta y si salís de la aplicación (cambiar de app, de pestaña o bloquear el celular).</p>' +
         '<div class="rules"><div><b>+1</b><span>Correcta</span></div><div><b>−1</b><span>Incorrecta</span></div><div><b>0</b><span>Sin responder</span></div></div>' +
       '</section>' +
       '<section class="card">' +
@@ -181,9 +250,10 @@
     var head, foot;
     if (!correcting) {
       var T = secs();
+      if (!S.qStart) { S.qStart = Date.now(); }
       if (T && (S.deadlineIdx !== S.idx || !S.deadline)) { S.deadline = Date.now() + T * 1000; S.deadlineIdx = S.idx; save(); }
       var leftS = T ? Math.max(0, Math.ceil((S.deadline - Date.now()) / 1000)) : 0;
-      head = (S.timeoutMsg ? '<p class="note" id="tmsg">' + esc(S.timeoutMsg) + '</p>' : '') +
+      head = awayHtml() + (S.timeoutMsg ? '<p class="note" id="tmsg">' + esc(S.timeoutMsg) + '</p>' : '') +
         '<div class="q-meta"><span>Pregunta <b>' + (S.idx + 1) + '</b> de ' + N + '</span>' +
         (T ? '<span class="timer" id="timer" role="timer" aria-label="Tiempo restante">⏱ <b id="tsec">' + clock(leftS) + '</b></span>' : '') +
         '<span>Respondidas: <b>' + done + '</b></span></div>' +
@@ -198,7 +268,7 @@
     } else {
       var used = Math.max(0, S.verificaciones - 1);
       var changed = norm(S.respuestas) !== norm(S.snapshot);
-      head = '<section class="card">' +
+      head = awayHtml() + '<section class="card">' +
         '<div class="q-meta"><span>Corrección <b>' + (used + 1) + '</b> de ' + S.maxCorrecciones + '</span><span>Respondidas: <b>' + done + '</b> de ' + N + '</span></div>' +
         '<p class="small muted">Tocá un número para ir a esa pregunta. No se indica cuáles están bien o mal.</p>' +
         '<div class="grid50">' + S.preguntas.map(function (p, i) {
@@ -248,13 +318,19 @@
     var $v = document.getElementById('verify'); if ($v) $v.onclick = function () { verify($v); };
     var $b = document.getElementById('back'); if ($b) $b.onclick = function () { S.stage = 'resultados'; save(); render(); window.scrollTo(0, 0); };
     var $d = document.getElementById('discard'); if ($d) $d.onclick = function () {
+      logEv('descarta_correccion', '', '');
       S.respuestas = Object.assign({}, S.snapshot); S.stage = 'resultados'; save(); render(); window.scrollTo(0, 0);
     };
   }
 
   // Primera pasada: avanzar a la siguiente pregunta (o al final) y reiniciar el reloj.
   function advance() {
+    var q = S.preguntas[S.idx], a = S.respuestas[q.n];
+    var spent = S.qStart ? Math.round((Date.now() - S.qStart) / 1000) : 0;
+    logEv('avanza', q.n, a === 'V' || a === 'F' ? 'Respuesta: ' + a : 'Sin responder', spent);
+    S.qStart = null; S.awayMsg = '';
     S.deadline = null; S.deadlineIdx = null;
+    if (S.idx >= total() - 1) logEv('fin_primera', '', answered(S.respuestas) + ' respondidas');
     if (S.idx >= total() - 1) { S.stage = 'fin'; save(); render(); window.scrollTo(0, 0); return; }
     S.idx++; save(); render(); window.scrollTo(0, 0);
   }
@@ -263,6 +339,7 @@
   function timeUp() {
     var q = S.preguntas[S.idx];
     var a = S.respuestas[q.n];
+    logEv('tiempo_agotado', q.n, a === 'V' || a === 'F' ? 'Tenía marcada ' + a : 'Sin respuesta');
     if (a !== 'V' && a !== 'F') { S.respuestas[q.n] = ''; S.timeoutMsg = 'Se terminó el tiempo de la pregunta ' + (S.idx + 1) + ': quedó sin responder.'; }
     else S.timeoutMsg = '';
     advance();
@@ -284,9 +361,13 @@
   }
   setInterval(tick, 250);
 
+  function awayHtml() { return S.awayMsg ? '<p class="err" id="away">' + esc(S.awayMsg) + '</p>' : ''; }
+
   function choose(v) {
     var q = S.preguntas[S.idx];
+    if (S.respuestas[q.n] === v) return;
     S.respuestas[q.n] = v;   // 'V', 'F' o '' (sin responder a propósito)
+    logEv('marca', q.n, (v || 'Sin responder') + (S.stage === 'corrigiendo' ? ' (en corrección)' : ''));
     save();
     render();
   }
@@ -323,12 +404,13 @@
     busy = true; btnBusy(btn, 'Verificando…');
     try {
       var r = await withSession(function () {
-        return VF.call('verify', { examId: S.examId, token: S.token, respuestas: onlyVF(S.respuestas) });
+        var evs = takeEvents();
+        return VF.call('verify', { examId: S.examId, token: S.token, respuestas: onlyVF(S.respuestas), eventos: evs }).catch(function (e) { putBack(evs); throw e; });
       });
       S.verificaciones = r.verificaciones;
       S.resultado = r.resultado;
       S.snapshot = onlyVF(S.respuestas);
-      S.stage = 'resultados';
+      S.stage = 'resultados'; S.awayMsg = '';
       save(); render(); window.scrollTo(0, 0);
     } catch (e) {
       if (e.code === 'no_corrections') { S.respuestas = Object.assign({}, S.snapshot); S.verificaciones = 1 + S.maxCorrecciones; S.stage = 'resultados'; save(); render(); alertBox(e.message); }
@@ -357,7 +439,7 @@
     var left = remaining(), used = S.maxCorrecciones - left;
     var pips = '';
     for (var i = 0; i < S.maxCorrecciones; i++) pips += '<span class="pip ' + (i < used ? 'used' : 'free') + '" aria-hidden="true"></span>';
-    $app.innerHTML =
+    $app.innerHTML = awayHtml() +
       '<section class="card">' +
         '<p class="eyebrow">Resultado ' + (S.verificaciones > 1 ? '· después de ' + (S.verificaciones - 1) + ' corrección' + (S.verificaciones > 2 ? 'es' : '') : '') + '</p>' +
         '<h1>Tu resultado</h1>' +
@@ -376,7 +458,7 @@
             '</div>') +
       '</section>';
     var $fix = document.getElementById('fix');
-    if ($fix) $fix.onclick = function () { S.stage = 'corrigiendo'; S.idx = 0; S.respuestas = Object.assign({}, S.snapshot); save(); render(); window.scrollTo(0, 0); };
+    if ($fix) $fix.onclick = function () { logEv('inicio_correccion', '', 'Corrección ' + (S.verificaciones)); S.stage = 'corrigiendo'; S.idx = 0; S.respuestas = Object.assign({}, S.snapshot); save(); render(); window.scrollTo(0, 0); };
     var $s = document.getElementById('send'); if ($s) $s.onclick = function () { confirmSend = true; render(); };
     var $c = document.getElementById('cancel'); if ($c) $c.onclick = function () { confirmSend = false; render(); };
     var $s2 = document.getElementById('send2'); if ($s2) $s2.onclick = function () { submit($s2); };
@@ -387,9 +469,11 @@
     busy = true; btnBusy(btn, 'Enviando…');
     try {
       var r = await withSession(function () {
-        return VF.call('submit', { examId: S.examId, token: S.token, respuestas: onlyVF(S.snapshot) });
+        var evs = takeEvents();
+        return VF.call('submit', { examId: S.examId, token: S.token, respuestas: onlyVF(S.snapshot), eventos: evs }).catch(function (e) { putBack(evs); throw e; });
       });
-      S.resultado = r.resultado; S.enviado = r.enviado; S.stage = 'enviado'; confirmSend = false;
+      S.resultado = r.resultado; S.enviado = r.enviado; S.stage = 'enviado'; confirmSend = false; S.awayMsg = '';
+      Q = []; qsave();
       save(); render(); window.scrollTo(0, 0);
     } catch (e) {
       confirmSend = false;
@@ -410,5 +494,6 @@
     document.getElementById('other').onclick = function () { reset(); render(); window.scrollTo(0, 0); };
   }
 
+  try { if (window.self !== window.top) document.body.classList.add('embedded'); } catch (e) { document.body.classList.add('embedded'); }
   boot();
 })();

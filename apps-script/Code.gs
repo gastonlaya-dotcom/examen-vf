@@ -12,9 +12,18 @@
  */
 
 var TZ = 'America/Argentina/Buenos_Aires';
-var SH = { CONFIG: 'Config', PREG: 'Preguntas', EXAM: 'Examenes', DET: 'Detalle' };
+var SH = { CONFIG: 'Config', PREG: 'Preguntas', EXAM: 'Examenes', DET: 'Detalle', ACT: 'Actividad' };
 var EXAM_H = ['id', 'token', 'creado', 'nombre', 'apellido', 'curso', 'dni', 'estado', 'verificaciones',
-  'respuestas', 'orden', 'correctas', 'incorrectas', 'sin_responder', 'puntaje', 'enviado'];
+  'respuestas', 'orden', 'correctas', 'incorrectas', 'sin_responder', 'puntaje', 'enviado',
+  'salidas', 'seg_fuera', 'reingresos', 'ultima_actividad'];
+var ACT_H = ['examen_id', 'dni', 'apellido', 'nombre', 'hora_alumno', 'hora_servidor', 'evento', 'pregunta', 'detalle', 'segundos'];
+var EVENTOS = {
+  registro: 'Se registró', reingreso_dispositivo: 'Reingresó (servidor)', reingreso: 'Volvió a abrir o recargó la app',
+  salida: 'Salió de la app', regreso: 'Volvió a la app', foco: 'Perdió el foco de la pantalla',
+  marca: 'Marcó una opción', avanza: 'Pasó a la siguiente', tiempo_agotado: 'Se agotó el tiempo',
+  fin_primera: 'Terminó la primera pasada', inicio_correccion: 'Empezó una corrección', descarta_correccion: 'Descartó cambios',
+  cambio: 'Cambió una respuesta', verificacion: 'Verificó resultados', envio: 'Envió el examen'
+};
 var DET_H = ['examen_id', 'enviado', 'apellido', 'nombre', 'curso', 'dni', 'n', 'pregunta',
   'respuesta_correcta', 'respuesta_elegida', 'resultado', 'puntos'];
 var CONFIG_DEFAULTS = [
@@ -24,7 +33,8 @@ var CONFIG_DEFAULTS = [
   ['max_correcciones', '3', 'Cantidad máxima de correcciones por alumno'],
   ['mezclar', 'NO', 'SI = cada alumno recibe las preguntas en orden aleatorio'],
   ['cursos', '', 'Lista de cursos separados por coma (vacío = texto libre)'],
-  ['segundos_por_pregunta', '60', 'Tiempo para responder cada pregunta en la primera pasada (0 = sin límite)']
+  ['segundos_por_pregunta', '60', 'Tiempo para responder cada pregunta en la primera pasada (0 = sin límite)'],
+  ['link_alumnos', '', 'Link que abre el QR (por ejemplo, la página de Google Sites). Vacío = el sitio de GitHub Pages']
 ];
 var SEED = [["Un sistema de información incluye personas, procedimientos, datos y tecnología, no solo computadoras.", "V"], ["Dato e información son sinónimos en la gestión empresarial.", "F"], ["La información tiene valor cuando es oportuna, precisa y relevante para quien decide.", "V"], ["Un ERP integra en una única base de datos los procesos de distintas áreas de la empresa.", "V"], ["Un ERP se implementa siempre sin necesidad de revisar los procesos de negocio de la empresa.", "F"], ["La memoria RAM conserva su contenido cuando se apaga el equipo.", "F"], ["Un disco SSD no tiene partes mecánicas móviles.", "V"], ["La computación en la nube permite pagar por uso en lugar de invertir en infraestructura propia.", "V"], ["En el modelo SaaS, el cliente es responsable de administrar los servidores donde corre la aplicación.", "F"], ["IaaS provee infraestructura (servidores, almacenamiento, red) como servicio.", "V"], ["El sistema operativo es un software de aplicación.", "F"], ["El software de código abierto nunca tiene costos asociados de implementación ni de soporte.", "F"], ["Un algoritmo es una secuencia finita de pasos para resolver un problema.", "V"], ["RFID permite identificar objetos sin línea de visión directa, a diferencia del código de barras.", "V"], ["La mayor parte del tráfico internacional de Internet viaja por satélites.", "F"], ["TCP/IP es el conjunto de protocolos sobre el que funciona Internet.", "V"], ["Una red LAN cubre áreas geográficas extensas, como países o continentes.", "F"], ["La Business Intelligence transforma datos en información para la toma de decisiones.", "V"], ["Un data warehouse está optimizado principalmente para registrar transacciones operativas en tiempo real.", "F"], ["La minería de datos busca patrones y relaciones no evidentes en grandes volúmenes de datos.", "V"], ["Un tablero de control debería mostrar todos los indicadores disponibles, sin priorizar.", "F"], ["La inteligencia artificial generativa puede producir respuestas incorrectas con apariencia convincente.", "V"], ["COBIT es un marco de referencia para el gobierno y la gestión de las TI.", "V"], ["La gobernanza de IT es responsabilidad exclusiva del área de sistemas.", "F"], ["Alinear la estrategia de IT con la estrategia del negocio es un objetivo central de la gobernanza de IT.", "V"], ["El CHAOS Report del Standish Group analiza el éxito y el fracaso de proyectos de software.", "V"], ["Según el CHAOS Report, la mayoría de los proyectos de software terminan en el tiempo, costo y alcance previstos.", "F"], ["Las metodologías ágiles entregan el producto en incrementos cortos e iterativos.", "V"], ["En una metodología en cascada, cada etapa comienza cuando finaliza la anterior.", "V"], ["Scrum es una metodología en cascada.", "F"], ["El involucramiento de los usuarios es un factor clave de éxito en los proyectos de sistemas.", "V"], ["Desarrollar software a medida suele ser más rápido y barato que adquirir un paquete estándar.", "F"], ["Al tercerizar un servicio de IT, la empresa deja de necesitar controlar al proveedor.", "F"], ["Un acuerdo de nivel de servicio (SLA) define parámetros medibles de calidad que el proveedor se compromete a cumplir.", "V"], ["El costo total de propiedad (TCO) considera solo el precio de compra del equipamiento.", "F"], ["En una contratación de tecnología conviene definir los criterios de evaluación antes de recibir las propuestas.", "V"], ["Confidencialidad, integridad y disponibilidad son los pilares de la seguridad de la información.", "V"], ["Un firewall alcanza por sí solo para proteger a una organización de todos los ataques informáticos.", "F"], ["El phishing busca engañar a las personas para que entreguen credenciales o información sensible.", "V"], ["El ransomware cifra los datos de la víctima y exige un pago para liberarlos.", "V"], ["Tener backups probados periódicamente es una medida clave frente a un ataque de ransomware.", "V"], ["La autenticación de dos factores combina, por ejemplo, algo que sabés con algo que tenés.", "V"], ["Un plan de continuidad del negocio solo es necesario en empresas de más de mil empleados.", "F"], ["El e-business abarca únicamente la venta de productos por Internet.", "F"], ["El modelo B2B se refiere a transacciones entre empresas.", "V"], ["Las plataformas digitales pueden convertir en commodity a las empresas que dependen de ellas para llegar a sus clientes.", "V"], ["La Industria 4.0 se caracteriza por integrar sistemas físicos y digitales, como sensores conectados e IoT.", "V"], ["Internet de las Cosas (IoT) se refiere exclusivamente a la conexión de computadoras personales a Internet.", "F"], ["El diagrama de un circuito administrativo permite detectar controles internos y puntos de mejora del proceso.", "V"], ["Digitalizar un proceso ineficiente lo vuelve eficiente automáticamente.", "F"]];
 
@@ -40,8 +50,10 @@ function setup() {
   if (p.getLastRow() < 2 && SEED.length) {
     p.getRange(2, 1, SEED.length, 3).setValues(SEED.map(function (q, i) { return [String(i + 1), q[0], q[1]]; }));
   }
-  var e = sheet_(SH.EXAM, EXAM_H); e.getRange('A:P').setNumberFormat('@');
+  var e = sheet_(SH.EXAM, EXAM_H); e.getRange('A:T').setNumberFormat('@');
   var d = sheet_(SH.DET, DET_H); d.getRange('A:L').setNumberFormat('@');
+  var a = sheet_(SH.ACT, ACT_H); a.getRange('A:J').setNumberFormat('@');
+  var e2 = ss.getSheetByName(SH.EXAM); if (e2.getLastColumn() < EXAM_H.length) e2.getRange(1, 1, 1, EXAM_H.length).setValues([EXAM_H]).setFontWeight('bold');
   var s1 = ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1');
   if (s1 && s1.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(s1);
   clearCache_();
@@ -160,16 +172,56 @@ function findExam_(id) {
   return null;
 }
 
-function writeExam_(x) {
-  var fresh = findExam_(x.id);           // releer la fila por si cambió de posición
+// Escribe solo las columnas indicadas, para no pisar cambios concurrentes de otras acciones.
+function writeFields_(id, fields) {
+  var fresh = findExam_(id);           // releer la fila por si cambió de posición
   if (!fresh) throw fail_('El examen ya no existe. Volvé a registrarte.', 'not_found');
-  var row = EXAM_H.map(function (h) {
-    if (h === 'respuestas') return JSON.stringify(x.respuestas || {});
-    if (h === 'orden') return x.orden ? JSON.stringify(x.orden) : '';
-    return x[h] == null ? '' : String(x[h]);
+  var sh = examSheet_();
+  Object.keys(fields).forEach(function (h) {
+    var col = EXAM_H.indexOf(h);
+    if (col < 0) return;
+    var v = fields[h];
+    if (h === 'respuestas') v = JSON.stringify(v || {});
+    else if (h === 'orden') v = v ? JSON.stringify(v) : '';
+    sh.getRange(fresh.row, col + 1).setValue(v == null ? '' : String(v));
   });
-  examSheet_().getRange(fresh.row, 1, 1, EXAM_H.length).setValues([row]);
 }
+
+function tsFromClient_(t) {
+  var n = Number(t);
+  return n > 1e12 ? Utilities.formatDate(new Date(n), TZ, 'yyyy-MM-dd HH:mm:ss') : '';
+}
+
+// Registra eventos de actividad y actualiza los contadores del examen.
+function logEvents_(x, events) {
+  if (!events || !events.length) return;
+  events = events.slice(0, 300);
+  var srv = now_(), salidas = 0, fuera = 0, reing = 0;
+  var rows = events.map(function (ev) {
+    var e = String(ev.e || '').slice(0, 40);
+    var secs = Math.max(0, Math.min(86400, Math.round(Number(ev.s) || 0)));
+    if (e === 'salida') salidas++;
+    if (e === 'regreso') fuera += secs;
+    if (e === 'reingreso') reing++;
+    return [x.id, x.dni, x.apellido, x.nombre, ev.srv ? srv : tsFromClient_(ev.t), srv, e,
+      ev.n ? String(ev.n) : '', String(ev.d == null ? '' : ev.d).slice(0, 200), secs ? String(secs) : ''];
+  });
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return;
+  try {
+    var a = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH.ACT);
+    a.getRange(a.getLastRow() + 1, 1, rows.length, ACT_H.length).setValues(rows);
+    var cur = findExam_(x.id);
+    if (cur) writeFields_(x.id, {
+      salidas: (parseInt(cur.salidas, 10) || 0) + salidas,
+      seg_fuera: (parseInt(cur.seg_fuera, 10) || 0) + fuera,
+      reingresos: (parseInt(cur.reingresos, 10) || 0) + reing,
+      ultima_actividad: srv
+    });
+  } finally { lock.releaseLock(); }
+}
+
+function srvEvent_(e, n, d) { return { e: e, n: n || '', d: d == null ? '' : d, srv: true }; }
 
 function cleanAnswers_(raw, qs) {
   var out = {};
@@ -258,7 +310,11 @@ ACTIONS.register = function (req) {
       if (x.token && x.token !== String(req.token || '')) {
         throw fail_('Ya hay un examen en curso con este DNI o registro en otro dispositivo. Pedile al docente que habilite el reingreso.', 'in_use');
       }
-      if (!x.token) { x.token = Utilities.getUuid(); writeExam_(x); }
+      if (!x.token) {
+        x.token = Utilities.getUuid(); writeFields_(x.id, { token: x.token });
+        lock.releaseLock(); logEvents_(x, [srvEvent_('reingreso_dispositivo', '', 'Nuevo dispositivo habilitado por el docente')]);
+        return studentPayload_(x, cfg, qs);
+      }
       return studentPayload_(x, cfg, qs);
     }
     if (cfg.abierto !== 'SI') throw fail_('El examen está cerrado. Consultá con tu docente.', 'closed');
@@ -266,7 +322,8 @@ ACTIONS.register = function (req) {
       id: Utilities.getUuid().replace(/-/g, '').slice(0, 10), token: Utilities.getUuid(), creado: now_(),
       nombre: nombre, apellido: apellido, curso: curso, dni: dni, estado: 'en_curso', verificaciones: 0,
       respuestas: {}, orden: cfg.mezclar === 'SI' ? shuffle_(qs.length) : null,
-      correctas: '', incorrectas: '', sin_responder: '', puntaje: '', enviado: ''
+      correctas: '', incorrectas: '', sin_responder: '', puntaje: '', enviado: '',
+      salidas: '0', seg_fuera: '0', reingresos: '0', ultima_actividad: now_()
     };
     var row = EXAM_H.map(function (h) {
       if (h === 'respuestas') return '{}';
@@ -275,17 +332,37 @@ ACTIONS.register = function (req) {
     });
     var sh = examSheet_();
     sh.getRange(sh.getLastRow() + 1, 1, 1, EXAM_H.length).setValues([row]);
+    lock.releaseLock();
+    logEvents_(x, [srvEvent_('registro', '', x.curso)]);
     return studentPayload_(x, cfg, qs);
   } finally { lock.releaseLock(); }
+};
+
+ACTIONS.log = function (req) {
+  var x = findExam_(String(req.examId || ''));
+  if (!x || !x.token || x.token !== String(req.token || '')) return { ignored: true };
+  logEvents_(x, Array.isArray(req.eventos) ? req.eventos : []);
+  return {};
 };
 
 ACTIONS.verify = function (req) {
   var x = authExam_(req), cfg = config_(), qs = questions_();
   if (x.estado === 'enviado') throw fail_('Este examen ya fue enviado.', 'sent');
   if (x.verificaciones >= 1 + cfg.max_correcciones) throw fail_('Ya usaste todas tus correcciones. Solo podés enviar el examen.', 'no_corrections');
-  x.respuestas = cleanAnswers_(req.respuestas, qs);
+  var prev = x.respuestas || {}, nuevas = cleanAnswers_(req.respuestas, qs);
+  x.respuestas = nuevas;
   x.verificaciones = x.verificaciones + 1;
-  writeExam_(x);
+  writeFields_(x.id, { respuestas: x.respuestas, verificaciones: x.verificaciones });
+  var ev = (req.eventos || []).slice();
+  if (x.verificaciones > 1) {
+    qs.forEach(function (q) {
+      var a = prev[q.n] || '', b = nuevas[q.n] || '';
+      if (a !== b) ev.push(srvEvent_('cambio', q.n, (a || '—') + ' → ' + (b || '—')));
+    });
+  }
+  var sc = score_(x.respuestas, qs);
+  ev.push(srvEvent_('verificacion', '', 'Verificación ' + x.verificaciones + ': ' + sc.correctas + ' bien, ' + sc.incorrectas + ' mal, ' + sc.sin_responder + ' sin responder → ' + sc.puntaje));
+  logEvents_(x, ev);
   return {
     resultado: score_(x.respuestas, qs), verificaciones: x.verificaciones,
     correccionesRestantes: Math.max(0, cfg.max_correcciones - (x.verificaciones - 1))
@@ -312,10 +389,13 @@ ACTIONS.submit = function (req) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(25000)) throw fail_('El servidor está ocupado. Tocá Enviar de nuevo en unos segundos.', 'busy');
   try {
-    writeExam_(x);
+    writeFields_(x.id, { respuestas: x.respuestas, estado: x.estado, enviado: x.enviado, correctas: x.correctas,
+      incorrectas: x.incorrectas, sin_responder: x.sin_responder, puntaje: x.puntaje });
     var d = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH.DET);
     d.getRange(d.getLastRow() + 1, 1, rows.length, DET_H.length).setValues(rows);
   } finally { lock.releaseLock(); }
+  var evs = (req.eventos || []).slice(); evs.push(srvEvent_('envio', '', 'Puntaje final ' + r.puntaje));
+  logEvents_(x, evs);
   return { resultado: r, enviado: x.enviado };
 };
 
@@ -328,7 +408,7 @@ function admin_(req) {
 }
 
 function publicCfg_(cfg) {
-  return { titulo: cfg.titulo, abierto: cfg.abierto, max_correcciones: cfg.max_correcciones, mezclar: cfg.mezclar, cursos: cfg.cursos, segundos_por_pregunta: cfg.segundos_por_pregunta };
+  return { titulo: cfg.titulo, abierto: cfg.abierto, max_correcciones: cfg.max_correcciones, mezclar: cfg.mezclar, cursos: cfg.cursos, segundos_por_pregunta: cfg.segundos_por_pregunta, link_alumnos: cfg.link_alumnos };
 }
 
 function examSummary_(x, total) {
@@ -337,8 +417,31 @@ function examSummary_(x, total) {
     estado: x.estado, verificaciones: x.verificaciones, correccionesUsadas: Math.max(0, x.verificaciones - 1),
     respondidas: Object.keys(x.respuestas || {}).length, total: total,
     correctas: x.correctas, incorrectas: x.incorrectas, sin_responder: x.sin_responder, puntaje: x.puntaje,
-    enviado: x.enviado, vinculado: !!x.token
+    enviado: x.enviado, vinculado: !!x.token,
+    salidas: parseInt(x.salidas, 10) || 0, segFuera: parseInt(x.seg_fuera, 10) || 0,
+    reingresos: parseInt(x.reingresos, 10) || 0, ultimaActividad: x.ultima_actividad
   };
+}
+
+function activity_(id) {
+  var a = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH.ACT), out = [];
+  if (!a || a.getLastRow() < 2) return out;
+  a.getRange(2, 1, a.getLastRow() - 1, ACT_H.length).getValues().forEach(function (r) {
+    if (id && str_(r[0]) !== id) return;
+    var o = {}; ACT_H.forEach(function (h, i) { o[h] = str_(r[i]); }); out.push(o);
+  });
+  return out;
+}
+
+// Borra las filas cuyo primer campo coincide con id (reescribe la hoja de una vez).
+function removeRows_(name, id) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  if (!sh || sh.getLastRow() < 2) return;
+  var n = sh.getLastColumn(), vals = sh.getRange(2, 1, sh.getLastRow() - 1, n).getValues();
+  var keep = vals.filter(function (r) { return str_(r[0]) !== id; });
+  if (keep.length === vals.length) return;
+  sh.getRange(2, 1, vals.length, n).clearContent();
+  if (keep.length) sh.getRange(2, 1, keep.length, n).setValues(keep);
 }
 
 ACTIONS.adminLogin = function (req) {
@@ -380,6 +483,11 @@ ACTIONS.adminSetConfig = function (req) {
   if (c.max_correcciones != null) setConfigValue_('max_correcciones', String(Math.max(0, Math.min(20, parseInt(c.max_correcciones, 10) || 0))));
   if (c.mezclar != null) setConfigValue_('mezclar', c.mezclar === true || String(c.mezclar).toUpperCase() === 'SI' ? 'SI' : 'NO');
   if (c.cursos != null) setConfigValue_('cursos', String(c.cursos));
+  if (c.link_alumnos != null) {
+    var lk = String(c.link_alumnos).trim();
+    if (lk && !/^https:\/\//.test(lk)) throw fail_('El link para alumnos debe empezar con https://');
+    setConfigValue_('link_alumnos', lk);
+  }
   if (c.segundos_por_pregunta != null) setConfigValue_('segundos_por_pregunta', String(Math.max(0, Math.min(600, parseInt(c.segundos_por_pregunta, 10) || 0))));
   if (c.nueva_password) {
     if (String(c.nueva_password).length < 6) throw fail_('La contraseña nueva debe tener al menos 6 caracteres.');
@@ -417,18 +525,19 @@ ACTIONS.adminGetExam = function (req) {
   }
   detalle.sort(function (a, b) { return a.n - b.n; });
   var sum = examSummary_(x, qs.length);
+  var actividad = activity_(x.id);
   if (x.estado !== 'enviado') {
     var r = score_(x.respuestas, qs);
     sum.parcial = r;
   }
-  return { examen: sum, detalle: detalle };
+  return { examen: sum, detalle: detalle, actividad: actividad, eventos: EVENTOS };
 };
 
 ACTIONS.adminUnlock = function (req) {
   admin_(req);
   var x = findExam_(String(req.id || ''));
   if (!x) throw fail_('Examen no encontrado.', 'not_found');
-  x.token = ''; writeExam_(x);
+  writeFields_(x.id, { token: '' });
   return {};
 };
 
@@ -439,11 +548,8 @@ ACTIONS.adminDeleteExam = function (req) {
     var x = findExam_(String(req.id || ''));
     if (!x) throw fail_('Examen no encontrado.', 'not_found');
     examSheet_().deleteRow(x.row);
-    var d = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH.DET);
-    if (d.getLastRow() > 1) {
-      var ids = d.getRange(2, 1, d.getLastRow() - 1, 1).getValues();
-      for (var i = ids.length - 1; i >= 0; i--) if (str_(ids[i][0]) === x.id) d.deleteRow(i + 2);
-    }
+    removeRows_(SH.DET, x.id);
+    removeRows_(SH.ACT, x.id);
   } finally { lock.releaseLock(); }
   return {};
 };
@@ -454,7 +560,7 @@ ACTIONS.adminArchive = function (req) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var stamp = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HHmm');
-    [SH.EXAM, SH.DET].forEach(function (name) {
+    [SH.EXAM, SH.DET, SH.ACT].forEach(function (name) {
       var sh = ss.getSheetByName(name);
       if (sh.getLastRow() < 2) return;
       sh.copyTo(ss).setName(name + ' ' + stamp);
@@ -473,5 +579,5 @@ ACTIONS.adminExport = function (req) {
       var o = {}; DET_H.forEach(function (h, i) { o[h] = str_(r[i]); }); return o;
     });
   }
-  return { examenes: exams_().map(function (x) { return examSummary_(x, total); }), detalle: det };
+  return { examenes: exams_().map(function (x) { return examSummary_(x, total); }), detalle: det, actividad: activity_(''), eventos: EVENTOS };
 };

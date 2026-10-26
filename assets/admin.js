@@ -16,7 +16,12 @@
   function ssGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
   function ssSet(k, v) { try { if (v) sessionStorage.setItem(k, v); else sessionStorage.removeItem(k); } catch (e) { } }
   function call(action, data) { return VF.call(action, Object.assign({ password: pw }, data || {})); }
+  function appUrl() {
+    var base = location.href.replace(/[#?].*$/, '').replace(/admin\.html$/, '');
+    return VF.fromConfig() ? base : base + '?api=' + encodeURIComponent(VF.getUrl());
+  }
   function studentUrl() {
+    if (cfg && cfg.link_alumnos) return cfg.link_alumnos;
     var base = location.href.replace(/[#?].*$/, '').replace(/admin\.html$/, '');
     if (!/\/$/.test(base)) base = base.replace(/[^/]*$/, '');
     return VF.fromConfig() ? base : base + '?api=' + encodeURIComponent(VF.getUrl());
@@ -95,8 +100,8 @@
       '<p id="rmsg" hidden></p>' +
       '<div class="tablewrap"><table><thead><tr>' +
         '<th>Alumno</th><th>Curso</th><th>DNI / registro</th><th>Estado</th><th class="n">Resp.</th><th class="n">Correc.</th>' +
-        '<th class="n">✓</th><th class="n">✗</th><th class="n">—</th><th class="n">Puntaje</th><th>Enviado</th>' +
-      '</tr></thead><tbody id="rows"><tr><td colspan="11" class="muted">Cargando…</td></tr></tbody></table></div>' +
+        '<th class="n">✓</th><th class="n">✗</th><th class="n">—</th><th class="n">Puntaje</th><th>Salidas de la app</th><th class="n">Reingr.</th><th>Enviado</th>' +
+      '</tr></thead><tbody id="rows"><tr><td colspan="13" class="muted">Cargando…</td></tr></tbody></table></div>' +
       '<div class="actions" style="justify-content:flex-end"><button class="btn sm danger" id="archive">Archivar resultados y empezar de cero</button></div>' +
       '<div id="archive-confirm"></div>' +
       '<p class="small muted">Se actualiza solo cada 20 segundos. Tocá una fila para ver el examen completo. Todos los exámenes también quedan en la hoja <b>Examenes</b> y <b>Detalle</b> de tu Google Sheet.</p>';
@@ -131,8 +136,9 @@
     var prom = env.length ? env.reduce(function (s, x) { return s + (+x.puntaje || 0); }, 0) / env.length : null;
     document.getElementById('stats').innerHTML =
       stat('Registrados', exams.length) + stat('En curso', exams.length - env.length) +
-      stat('Enviados', env.length) + stat('Puntaje promedio', prom === null ? '—' : prom.toFixed(1).replace('.', ',') + ' / ' + totalPreguntas);
+      stat('Enviados', env.length) + stat('Salieron de la app', exams.filter(function (x) { return x.salidas > 0; }).length) + stat('Puntaje promedio', prom === null ? '—' : prom.toFixed(1).replace('.', ',') + ' / ' + totalPreguntas);
   }
+  function dur(sec) { sec = +sec || 0; return sec < 60 ? sec + ' s' : Math.floor(sec / 60) + ' min ' + (sec % 60 ? (sec % 60) + ' s' : ''); }
   function stat(k, v) { return '<div class="stat"><div class="k">' + k + '</div><div class="v">' + v + '</div></div>'; }
 
   function fillCursos() {
@@ -157,7 +163,7 @@
     var tb = document.getElementById('rows'); if (!tb) return;
     var list = filtered();
     if (!list.length) {
-      tb.innerHTML = '<tr><td colspan="11" class="muted">' + (exams.length ? 'Ningún examen coincide con el filtro.' : 'Todavía no se registró ningún alumno. Mostrá el QR desde la pestaña “QR y acceso”.') + '</td></tr>';
+      tb.innerHTML = '<tr><td colspan="13" class="muted">' + (exams.length ? 'Ningún examen coincide con el filtro.' : 'Todavía no se registró ningún alumno. Mostrá el QR desde la pestaña “QR y acceso”.') + '</td></tr>';
       return;
     }
     tb.innerHTML = list.map(function (x) {
@@ -170,6 +176,8 @@
         '<td class="n">' + x.correccionesUsadas + '</td>' +
         '<td class="n">' + (env ? x.correctas : '') + '</td><td class="n">' + (env ? x.incorrectas : '') + '</td><td class="n">' + (env ? x.sin_responder : '') + '</td>' +
         '<td class="n"><strong>' + (env ? x.puntaje : '') + '</strong></td>' +
+        '<td>' + (x.salidas ? '<span class="pill ' + (x.salidas > 2 || x.segFuera > 60 ? 'bad' : 'warn') + '">' + x.salidas + ' · ' + dur(x.segFuera) + '</span>' : '<span class="pill neutral">0</span>') + '</td>' +
+        '<td class="n">' + (x.reingresos || '') + '</td>' +
         '<td class="small">' + esc(x.enviado || '') + '</td></tr>';
     }).join('');
     tb.querySelectorAll('tr.click').forEach(function (tr) {
@@ -208,6 +216,7 @@
             '<td>' + (d.elegida ? '<span class="vf mark">' + esc(d.elegida) + '</span>' : '<span class="muted">—</span>') + '</td>' +
             '<td><span class="pill ' + pill + '">' + esc(d.resultado) + '</span></td><td class="n">' + (d.puntos > 0 ? '+' : '') + d.puntos + '</td></tr>';
         }).join('') + '</tbody></table></div>' +
+        activityHtml(x, r.actividad || [], r.eventos || {}) +
         '<p id="emsg" hidden></p>' +
         '<div class="actions">' +
           (!env && x.vinculado ? '<button class="btn sm" id="unlock">Habilitar reingreso desde otro dispositivo</button>' : '') +
@@ -233,6 +242,24 @@
         catch (e) { freeBtn(b); msg(document.getElementById('emsg'), e.message); }
       };
     };
+  }
+
+  function activityHtml(x, act, names) {
+    var flags = act.filter(function (a) { return /^(salida|regreso|foco|reingreso|tiempo_agotado)$/.test(a.evento); });
+    var row = function (a) {
+      var warn = /^(salida|regreso|foco|reingreso)$/.test(a.evento);
+      return '<tr><td class="mono small">' + esc((a.hora_alumno || a.hora_servidor).slice(11)) + '</td>' +
+        '<td>' + (warn ? '<span class="pill warn">' + esc(names[a.evento] || a.evento) + '</span>' : esc(names[a.evento] || a.evento)) + '</td>' +
+        '<td class="n">' + esc(a.pregunta) + '</td><td>' + esc(a.detalle) + '</td><td class="n">' + (a.segundos ? dur(a.segundos) : '') + '</td></tr>';
+    };
+    var head = '<div class="tablewrap"><table class="timeline"><thead><tr><th>Hora</th><th>Evento</th><th class="n">Preg.</th><th>Detalle</th><th class="n">Duración</th></tr></thead><tbody>';
+    return '<section style="display:grid;gap:10px">' +
+      '<h3>Actividad del alumno</h3>' +
+      '<p class="small">' + (x.salidas ? '<span class="pill ' + (x.salidas > 2 || x.segFuera > 60 ? 'bad' : 'warn') + '">Salió de la app ' + x.salidas + (x.salidas === 1 ? ' vez' : ' veces') + ' · ' + dur(x.segFuera) + ' afuera</span> ' : '<span class="pill ok">No salió de la app</span> ') +
+        (x.reingresos ? '<span class="pill warn">Reabrió o recargó ' + x.reingresos + (x.reingresos === 1 ? ' vez' : ' veces') + '</span>' : '') + '</p>' +
+      (flags.length ? '<div><p class="small muted">Salidas, reingresos y tiempos agotados</p>' + head + flags.map(row).join('') + '</tbody></table></div></div>' : '') +
+      (act.length ? '<details class="act"><summary>Ver registro completo (' + act.length + ' eventos)</summary>' + head + act.map(row).join('') + '</tbody></table></div></details>' : '<p class="small muted">Sin eventos registrados todavía.</p>') +
+      '</section>';
   }
 
   function closeLayer() { $layer.innerHTML = ''; }
@@ -261,7 +288,7 @@
       var wb = XLSX.utils.book_new();
       var resumen = r.examenes.map(function (x) {
         return { Apellido: x.apellido, Nombre: x.nombre, Curso: x.curso, 'DNI/Registro': x.dni, Estado: x.estado === 'enviado' ? 'Enviado' : 'En curso',
-          'Correcciones usadas': x.correccionesUsadas, Correctas: num(x.correctas), Incorrectas: num(x.incorrectas), 'Sin responder': num(x.sin_responder),
+          'Correcciones usadas': x.correccionesUsadas, 'Salidas de la app': x.salidas, 'Segundos fuera': x.segFuera, Reingresos: x.reingresos, Correctas: num(x.correctas), Incorrectas: num(x.incorrectas), 'Sin responder': num(x.sin_responder),
           Puntaje: num(x.puntaje), Registrado: x.creado, Enviado: x.enviado };
       }).sort(function (a, b) { return (a.Apellido + a.Nombre).localeCompare(b.Apellido + b.Nombre, 'es'); });
       var detalle = r.detalle.map(function (d) {
@@ -274,6 +301,14 @@
       ws2['!cols'] = [{ wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 5 }, { wch: 70 }, { wch: 10 }, { wch: 10 }, { wch: 13 }, { wch: 7 }, { wch: 19 }];
       XLSX.utils.book_append_sheet(wb, ws1, 'Resumen');
       XLSX.utils.book_append_sheet(wb, ws2, 'Detalle');
+      var names = r.eventos || {};
+      var act = (r.actividad || []).map(function (a) {
+        return { Apellido: a.apellido, Nombre: a.nombre, 'DNI/Registro': a.dni, Hora: a.hora_alumno || a.hora_servidor, Evento: names[a.evento] || a.evento,
+          Pregunta: num(a.pregunta), Detalle: a.detalle, Segundos: num(a.segundos) };
+      });
+      var ws3 = XLSX.utils.json_to_sheet(act.length ? act : [{ Apellido: 'Sin actividad registrada' }]);
+      ws3['!cols'] = [{ wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 19 }, { wch: 30 }, { wch: 9 }, { wch: 60 }, { wch: 9 }];
+      XLSX.utils.book_append_sheet(wb, ws3, 'Actividad');
       var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
       XLSX.writeFile(wb, 'resultados_examen_' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()) + '.xlsx');
     } catch (e) { msg(document.getElementById('rmsg'), e.message); }
@@ -427,6 +462,7 @@
           '<p id="amsg" hidden></p>' +
           '<div class="actions"><button class="btn primary" id="proj">Proyectar QR en pantalla completa</button><a class="btn ghost" href="' + esc(url) + '" target="_blank" rel="noopener">Probar como alumno</a></div>' +
           '<p class="small muted">Los alumnos que ya empezaron pueden terminar y enviar aunque cierres el ingreso.</p>' +
+          '<p class="small muted">Link de la app para insertar en Google Sites (Insertar → Incorporar → Por URL): <span class="mono" style="overflow-wrap:anywhere">' + esc(appUrl()) + '</span></p>' +
         '</div></div></section>';
     makeQR(document.getElementById('qr'), url, 260);
     document.getElementById('copy').onclick = function () {
@@ -478,6 +514,8 @@
             '<div class="field"><label for="maxc">Correcciones permitidas</label><input id="maxc" type="number" min="0" max="20" value="' + cfg.max_correcciones + '"></div>' +
             '<div class="field"><label for="mez">Orden de las preguntas</label><select id="mez"><option value="NO">Igual para todos</option><option value="SI">Aleatorio por alumno</option></select></div>' +
           '</div>' +
+          '<div class="field"><label for="link">Link para alumnos (página de Google Sites)</label><input id="link" value="' + esc(cfg.link_alumnos || '') + '" placeholder="https://sites.google.com/view/…">' +
+            '<span class="hint">Es el link que abre el QR. Si lo dejás vacío, el QR abre la app directamente.</span></div>' +
           '<div class="field"><label for="segs">Tiempo por pregunta (segundos)</label><input id="segs" type="number" min="0" max="600" step="5" value="' + (cfg.segundos_por_pregunta == null ? 60 : cfg.segundos_por_pregunta) + '">' +
             '<span class="hint">Rige en la primera pasada: si se acaba el tiempo, la pregunta queda sin responder y pasa a la siguiente. 0 = sin límite. Las correcciones no tienen tiempo.</span></div>' +
           '<div class="field"><label for="npw">Nueva contraseña del panel</label><input id="npw" type="password" autocomplete="new-password" placeholder="Dejalo vacío para no cambiarla"></div>' +
@@ -495,7 +533,7 @@
         var r = await call('adminSetConfig', { config: {
           titulo: document.getElementById('titulo').value, cursos: document.getElementById('cursos').value,
           max_correcciones: document.getElementById('maxc').value, mezclar: document.getElementById('mez').value,
-          segundos_por_pregunta: document.getElementById('segs').value,
+          segundos_por_pregunta: document.getElementById('segs').value, link_alumnos: document.getElementById('link').value,
           nueva_password: npw || undefined } });
         cfg = r.config;
         if (npw) { pw = npw; ssSet(PW_KEY, pw); }
