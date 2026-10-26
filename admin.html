@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Examen V/F · Docente</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="admin">
+<header class="top">
+  <div class="wrap top-in">
+    <span class="brand">Examen <b>V/F</b> · Docente</span>
+    <span class="who"><span id="exam-title"></span> <button class="btn ghost sm" id="logout" hidden>Salir</button></span>
+  </div>
+  <div class="wrap" id="tabs-wrap" hidden>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="resultados" aria-selected="true">Resultados</button>
+      <button class="tab" role="tab" data-tab="preguntas" aria-selected="false">Preguntas</button>
+      <button class="tab" role="tab" data-tab="acceso" aria-selected="false">QR y acceso</button>
+      <button class="tab" role="tab" data-tab="config" aria-selected="false">Configuración</button>
+    </nav>
+  </div>
+</header>
+<main id="app" class="wrap"></main>
+<div id="layer"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="config.js"></script>
+<script src="assets/api.js"></script>
+<script src="assets/admin.js"></script>
+</body>
+</html>
